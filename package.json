@@ -1,0 +1,10 @@
+{
+  "name": "linearpress-mysql-plugin",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "LinearPress MySQL 驱动插件：连接 MySQL 并将 SQLite 数据迁移到 MySQL。",
+  "dependencies": {
+    "mysql2": "^3.11.5"
+  }
+}

@@ -1,0 +1,64 @@
+<div class="page-head"><h1>MySQL 插件</h1><p class="eyebrow">连接 MySQL 并迁移 SQLite 数据</p></div>
+<% if (notice) { %><p class="notice"><%= notice %></p><% } %>
+<section class="group-panel" style="max-width:640px">
+  <div class="group-heading"><div><h2>连接设置</h2><p class="eyebrow">配置 MySQL 主数据库</p></div><span class="plugin-status"><%= configured ? (migratedAt ? '已配置 · 迁移于 ' + migratedAt : '已配置 · 重启后接管 MySQL') : '未配置 · 当前使用 SQLite' %></span></div>
+  <p id="mysql-status" class="notice" hidden></p>
+  <p class="notice">迁移提醒：迁移将以 SQLite 数据<strong>全量覆盖</strong>目标 MySQL 表中的已有内容（清空后重建）；SQLite 仍保留作为基础设施，且<strong>不会从 MySQL 反向同步</strong>。请确认目标数据库可覆盖后再执行。</p>
+  <form class="editor-form" id="mysql-form">
+    <label class="editor-field">主机地址<input type="text" id="mysql-host" name="host" value="<%= host %>" placeholder="127.0.0.1" required></label>
+    <label class="editor-field">端口<input type="number" id="mysql-port" name="port" value="<%= port %>" min="1" max="65535"></label>
+    <label class="editor-field">用户名<input type="text" id="mysql-user" name="user" value="<%= user %>" autocomplete="username" required></label>
+    <label class="editor-field">密码<input type="password" id="mysql-password" name="password" placeholder="<%= configured ? '保持不变（留空使用已保存密码）' : '' %>" autocomplete="current-password"></label>
+    <label class="editor-field">数据库名<input type="text" id="mysql-database" name="database" value="<%= database %>" placeholder="linearpress" required></label>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <button type="button" class="button" id="mysql-test">测试连接</button>
+      <button type="submit" class="button">保存并迁移数据</button>
+      <% if (configured) { %><button type="button" class="button" id="mysql-disconnect" style="background:#c62828">断开（返回 SQLite）</button><% } %>
+    </div>
+  </form>
+</section>
+<script>
+(function () {
+  var status = document.getElementById('mysql-status');
+  function show(message, ok) {
+    status.hidden = false;
+    status.textContent = message;
+    status.className = 'notice ' + (ok ? 'notice-ok' : 'notice-error');
+  }
+  var password = document.getElementById('mysql-password');
+  function body() {
+    return {
+      host: document.getElementById('mysql-host').value.trim(),
+      port: Number(document.getElementById('mysql-port').value || 3306),
+      user: document.getElementById('mysql-user').value.trim(),
+      password: password.value,
+      database: document.getElementById('mysql-database').value.trim()
+    };
+  }
+  function post(url) {
+    var btn = document.activeElement;
+    if (btn) btn.disabled = true;
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body()) })
+      .then(function (r) { return r.json().catch(function () { return { ok: false, message: '服务器返回异常' }; }); })
+      .finally(function () { if (btn) btn.disabled = false; });
+  }
+  document.getElementById('mysql-test').addEventListener('click', function () {
+    post('/admin/plugins/mysql-plugin/test').then(function (data) { show(data.message || '完成', Boolean(data.ok)); });
+  });
+  document.getElementById('mysql-form').addEventListener('submit', function (event) {
+    event.preventDefault();
+    if (!confirm('迁移将以 SQLite 数据全量覆盖目标 MySQL 表，且不会反向同步。确定继续？')) return;
+    post('/admin/plugins/mysql-plugin/migrate').then(function (data) {
+      show(data.message || '完成', Boolean(data.ok));
+      if (data.ok) setTimeout(function () { location.reload(); }, 1500);
+    });
+  });
+  var disconnect = document.getElementById('mysql-disconnect');
+  if (disconnect) disconnect.addEventListener('click', function () {
+    if (!confirm('清除 MySQL 配置？重启站点后恢复使用 SQLite。')) return;
+    fetch('/admin/plugins/mysql-plugin/disconnect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) { show(data.message || '完成', Boolean(data.ok)); if (data.ok) setTimeout(function () { location.reload(); }, 1500); });
+  });
+})();
+</script>
