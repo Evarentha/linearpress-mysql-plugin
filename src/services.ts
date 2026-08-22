@@ -1,3 +1,10 @@
+/*
+ * Author: MoyuZJ
+ * Team: LinearTeam
+ * Contact: linearteam@foxmail.com
+ * Made by MoyuZJ in China with ♥
+ */
+
 /**
  * LinearPress MySQL driver — service layer.
  *

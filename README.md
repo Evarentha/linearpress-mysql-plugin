@@ -1,3 +1,10 @@
+<!--
+  Author: MoyuZJ
+  Team: LinearTeam
+  Contact: linearteam@foxmail.com
+  Made by MoyuZJ in China with ♥
+-->
+
 # LinearPress MySQL 插件
 
 把 MySQL 作为主数据库的驱动插件（`type: driver`）：在后台配置连接、把现有 SQLite 数据迁移到 MySQL，重启站点后 MySQL 替代默认 SQLite 承载业务数据。

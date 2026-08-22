@@ -1,3 +1,10 @@
+/*
+ * Author: MoyuZJ
+ * Team: LinearTeam
+ * Contact: linearteam@foxmail.com
+ * Made by MoyuZJ in China with ♥
+ */
+
 import fs from 'fs-extra';
 import path from 'node:path';
 

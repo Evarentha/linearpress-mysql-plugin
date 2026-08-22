@@ -1,3 +1,10 @@
+/*
+ * Author: MoyuZJ
+ * Team: LinearTeam
+ * Contact: linearteam@foxmail.com
+ * Made by MoyuZJ in China with ♥
+ */
+
 import mysql from 'mysql2/promise';
 import type { Pool } from 'mysql2/promise';
 import { assertValidDatabaseName } from './config.js';
