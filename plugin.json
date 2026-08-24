@@ -1,11 +1,12 @@
 {
   "id": "mysql-plugin",
   "name": "MySQL 插件",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "将 MySQL 作为主数据库：后台配置连接、从 SQLite 迁移数据，重启后 MySQL 替代默认 SQLite。",
   "author": "LinearPress",
   "type": "driver",
   "main": "index.ts",
+  "runtime": "cordis",
   "preboot": true,
   "permissions": [],
   "views": "views"

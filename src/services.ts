@@ -416,7 +416,7 @@ async function deleteGroup(pool: Pool, id: number): Promise<void> {
 /* 服务工厂                                                             */
 /* ------------------------------------------------------------------ */
 
-/** 与 base DatabaseService 契约同构，但 raw 为 mysql2 连接池（入口替换 TOKENS.databaseService 时需断言）。 */
+/** 与 base DatabaseService 契约同构，但 raw 为 mysql2 连接池（入口替换 ctx.databaseService 时需断言）。 */
 export interface MySQLDatabaseService {
   raw: Pool;
   all<T>(sql: string, ...params: unknown[]): Promise<T[]>;
@@ -617,7 +617,7 @@ export class MySQLSessionStore extends session.Store {
   }
 }
 
-/** 创建兼容 express-session 的 Store（替换 TOKENS.sessionStoreFactory 时可直接使用）。 */
+/** 创建兼容 express-session 的 Store（替换 ctx.sessionStoreFactory 时可直接使用）。 */
 export function createSessionStore(pool: Pool): session.Store {
   return new MySQLSessionStore(pool);
 }

@@ -10,13 +10,13 @@
 把 MySQL 作为主数据库的驱动插件（`type: driver`）：在后台配置连接、把现有 SQLite 数据迁移到 MySQL，重启站点后 MySQL 替代默认 SQLite 承载业务数据。
 
 - **插件 id**：`mysql-plugin`
-- **版本**：1.0.0
+- **版本**：1.1.0
 - **类型**：`driver`（`preboot: true`，配置存在时在预启动阶段接管 Session 存储）
 - **依赖**：`mysql2`（^3.11.5）
+- **生命周期运行时**：LinearPress Cordis + Express 兼容层。`preboot` / `bootstrap` 仍保持原有顺序；基础设施 SQLite 边界不变。
 
----
+迁移后的插件由 Cordis Fiber 持有。连接池仍在 `preboot` 创建并在 `deactivate` 关闭；如果后续将连接池改为 Cordis Effect，必须保证 Fiber 销毁时先释放连接，再卸载数据库服务。
 
-## 安装
 
 1. 将本插件目录整体复制到站点 `src/plugins/mysql-plugin/`（目录名必须与插件 id `mysql-plugin` 一致，插件管理器会校验）。
 2. 安装依赖：在站点根目录执行 `npm install mysql2`，或进入插件目录执行 `npm install`。
