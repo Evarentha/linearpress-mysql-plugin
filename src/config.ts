@@ -45,6 +45,8 @@ export function writeConfig(config: MysqlConfig): void {
   assertValidDatabaseName(config.database);
   fs.ensureDirSync(path.dirname(CONFIG_PATH));
   fs.writeJsonSync(CONFIG_PATH, config, { spaces: 2 });
+  // 配置含数据库明文密码，仅允许属主读写，防止备份/共享时泄露。
+  fs.chmodSync(CONFIG_PATH, 0o600);
 }
 
 export function clearConfig(): void {

@@ -43,6 +43,7 @@ const PLUGIN_ID = 'mysql-plugin';
 const PLUGIN_PATH = '/admin/plugins/mysql-plugin';
 const SETTINGS_PATH = `${PLUGIN_PATH}/settings`;
 const MANAGE_PERMISSION = 'plugin:manage';
+const messageOf = (error: unknown): string => error instanceof Error ? error.message : '操作失败';
 
 /** 本进程持有的连接池；只由 preboot/bootstrap 创建，Effect 关闭。 */
 let activePool: Pool | undefined;
@@ -112,13 +113,15 @@ export const activate = (context: Context): void => {
   // 后台菜单入口：与设置页主路径一致。
   hooks.on('admin:menu', (menu) => [...menu, { title: 'MySQL 插件', link: SETTINGS_PATH }]);
 
-  /** 需要 plugin:manage 权限；PermissionService.has 返回 MaybePromise，统一 await 处理。 */
-  const requireManage: RequestHandler = async (req, res, next) => {
+  /** 管理端守卫工厂（与 Base requireAuth/checkPermission 同构）：登录 + plugin:manage 权限。 */
+  const checkManagePermission = (): RequestHandler => async (req, res, next) => {
     if (!req.session.userId) return res.redirect('/login');
+    // PermissionService.has 返回 MaybePromise，统一 await 处理。
     const allowed = await Promise.resolve(context.permissions.has(req.session.userId, MANAGE_PERMISSION)).catch(() => false);
     if (!allowed) return res.status(403).render('error', { title: '权限不足', message: '你没有管理插件的权限。' });
     next();
   };
+  const requireManage = checkManagePermission();
 
   // 兼容旧入口：直接 302 到设置页主路径。
   web.register('get', PLUGIN_PATH, (_req, res) => res.redirect(302, SETTINGS_PATH));
@@ -152,7 +155,7 @@ export const activate = (context: Context): void => {
       });
       res.json({ ok: true, message: '连接成功' });
     } catch (error) {
-      res.status(400).json({ ok: false, message: `连接失败：${error instanceof Error ? error.message : String(error)}` });
+      res.status(400).json({ ok: false, message: `连接失败：${messageOf(error)}` });
     }
   });
 
@@ -183,8 +186,7 @@ export const activate = (context: Context): void => {
         if (pool !== activePool) await pool.end().catch(() => undefined);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      res.status(400).json({ ok: false, message: `迁移失败：${message}` });
+      res.status(400).json({ ok: false, message: `迁移失败：${messageOf(error)}` });
     }
   });
 

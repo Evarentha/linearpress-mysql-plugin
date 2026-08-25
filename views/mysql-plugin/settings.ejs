@@ -25,7 +25,7 @@
   </form>
 </section>
 <script>
-(function () {
+(() => {
   var status = document.getElementById('mysql-status');
   function show(message, ok) {
     status.hidden = false;
@@ -46,26 +46,26 @@
     var btn = document.activeElement;
     if (btn) btn.disabled = true;
     return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body()) })
-      .then(function (r) { return r.json().catch(function () { return { ok: false, message: '服务器返回异常' }; }); })
-      .finally(function () { if (btn) btn.disabled = false; });
+      .then((r) => { return r.json().catch(() => { return { ok: false, message: '服务器返回异常' }; }); })
+      .finally(() => { if (btn) btn.disabled = false; });
   }
-  document.getElementById('mysql-test').addEventListener('click', function () {
-    post('/admin/plugins/mysql-plugin/test').then(function (data) { show(data.message || '完成', Boolean(data.ok)); });
+  document.getElementById('mysql-test').addEventListener('click', () => {
+    post('/admin/plugins/mysql-plugin/test').then((data) => { show(data.message || '完成', Boolean(data.ok)); });
   });
-  document.getElementById('mysql-form').addEventListener('submit', function (event) {
+  document.getElementById('mysql-form').addEventListener('submit', (event) => {
     event.preventDefault();
     if (!confirm('迁移将以 SQLite 数据全量覆盖目标 MySQL 表，且不会反向同步。确定继续？')) return;
-    post('/admin/plugins/mysql-plugin/migrate').then(function (data) {
+    post('/admin/plugins/mysql-plugin/migrate').then((data) => {
       show(data.message || '完成', Boolean(data.ok));
-      if (data.ok) setTimeout(function () { location.reload(); }, 1500);
+      if (data.ok) setTimeout(() => { location.reload(); }, 1500);
     });
   });
   var disconnect = document.getElementById('mysql-disconnect');
-  if (disconnect) disconnect.addEventListener('click', function () {
+  if (disconnect) disconnect.addEventListener('click', () => {
     if (!confirm('清除 MySQL 配置？重启站点后恢复使用 SQLite。')) return;
     fetch('/admin/plugins/mysql-plugin/disconnect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
-      .then(function (r) { return r.json(); })
-      .then(function (data) { show(data.message || '完成', Boolean(data.ok)); if (data.ok) setTimeout(function () { location.reload(); }, 1500); });
+      .then((r) => { return r.json(); })
+      .then((data) => { show(data.message || '完成', Boolean(data.ok)); if (data.ok) setTimeout(() => { location.reload(); }, 1500); });
   });
 })();
 </script>
