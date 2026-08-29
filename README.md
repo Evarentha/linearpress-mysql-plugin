@@ -49,7 +49,7 @@ The plugin does not change OOBE. Without config it starts no MySQL logic — OOB
 ## Local Development / 本地开发：怎么拉 / 怎么改 / 怎么跑
 
 ```bash
-git clone https://github.com/Averithen/linearpress-mysql-plugin LinearPress/Plugins/mysql-plugin
+git clone https://github.com/Evarentha/linearpress-mysql-plugin LinearPress/Plugins/mysql-plugin
 cd LinearPress/base
 npm install && npm run db:init
 sh scripts/sync-plugins.sh mysql-plugin
