@@ -1,9 +1,28 @@
 {
-  "name": "linearpress-mysql-plugin",
-  "version": "1.0.0",
-  "private": true,
+  "name": "@evarentha/linearpress-mysql-plugin",
+  "version": "1.1.0",
+  "private": false,
+  "description": "将 MySQL 作为主数据库：后台配置连接、从 SQLite 迁移数据，重启后 MySQL 替代默认 SQLite。",
   "type": "module",
-  "description": "LinearPress MySQL 驱动插件：连接 MySQL 并将 SQLite 数据迁移到 MySQL。",
+  "main": "index.ts",
+  "files": [
+    "index.ts",
+    "plugin.json",
+    "src",
+    "views",
+    "public",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "linearpress",
+    "plugin",
+    "mysql-plugin"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "mysql2": "^3.11.5"
   }
