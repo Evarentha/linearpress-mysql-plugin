@@ -5,96 +5,72 @@
   Made by MoyuZJ in China with ♥
 -->
 
-# LinearPress MySQL 插件
+# MySQL 插件（mysql-plugin）
 
-把 MySQL 作为主数据库的驱动插件（`type: driver`）：在后台配置连接、把现有 SQLite 数据迁移到 MySQL，重启站点后 MySQL 替代默认 SQLite 承载业务数据。
+把 **MySQL 作为主数据库**的驱动插件（`type: driver`）：后台配置连接、把现有 SQLite 数据迁移到 MySQL，
+重启站点后 MySQL 替代默认 SQLite 承载业务数据；基础设施 SQLite 始终保留插件状态与站点设置。
 
-- **插件 id**：`mysql-plugin`
-- **版本**：1.1.0
-- **类型**：`driver`（`preboot: true`，配置存在时在预启动阶段接管 Session 存储）
-- **依赖**：`mysql2`（^3.11.5）
-- **生命周期运行时**：LinearPress Cordis + Express 兼容层。`preboot` / `bootstrap` 仍保持原有顺序；基础设施 SQLite 边界不变。
+> 本仓库是 LinearPress 插件 **mysql-plugin** 的独立开发仓库。
+> 依赖：`mysql2`；生命周期：`preboot: true`（配置存在时在预启动阶段接管 Session 存储）。
 
-迁移后的插件由 Cordis Fiber 持有。连接池仍在 `preboot` 创建并在 `deactivate` 关闭；如果后续将连接池改为 Cordis Effect，必须保证 Fiber 销毁时先释放连接，再卸载数据库服务。
+## 插件化的优势
 
+- **服务替换机制**：无需 fork 核心——在 `preboot` 替换 `sessionStoreFactory`、在 `bootstrap` 用 `replaceService` 替换全部业务服务，核心控制器按请求从 Context 解析，替换即刻生效。
+- **基础设施边界不变**：插件状态、设置、会话迁移记录仍在本地 SQLite，`mysql-plugin` 只接管业务数据。
+- **可回退**：后台「断开」删除配置回退 SQLite，不影响已启动的数据结构与业务。
 
-1. 将本插件目录整体复制到站点 `src/plugins/mysql-plugin/`（目录名必须与插件 id `mysql-plugin` 一致，插件管理器会校验）。
-2. 安装依赖：在站点根目录执行 `npm install mysql2`，或进入插件目录执行 `npm install`。
-3. 重启站点，进入后台「插件」页确认插件已启用；配置入口为 `/admin/plugins/mysql-plugin`（侧栏菜单「MySQL 插件」）。
+## 使用
 
 ```bash
+# 1. 复制到运行目录（目录名必须与插件 id 一致）
 cp -r Plugins/mysql-plugin src/plugins/
-cd src/plugins/mysql-plugin && npm install
+
+# 2. 安装依赖
+cd src/plugins/mysql-plugin && npm install      # 或站点根目录 npm install mysql2
 ```
 
----
+重启站点，后台「插件」页确认启用；配置入口 `/admin/plugins/mysql-plugin`（侧栏「MySQL 插件」）。
+
+## 配置与迁移
+
+- 配置文件：`data/mysql-plugin.json`（不依赖基础设施 SQLite，保证预启动阶段可读），字段 `host / port / user / password / database`；**密码明文存服务器端，请勿把 data 目录纳入版本控制**。
+- 后台「测试连接」仅验证连通性，不写入配置文件；「断开」删除文件回退 SQLite。
+- 迁移入口：填写连接 → 测试连接 →「保存并迁移」→ 重启站点。
 
 ## 与 OOBE 的关系
 
-插件**不改变 OOBE 流程**。未配置时，插件不启动任何 MySQL 逻辑，OOBE、SQLite 建库、超级管理员创建等行为与默认完全一致；配置并迁移、重启后，站点照常运行，只是数据落点换成了 MySQL。
+插件不改变 OOBE 流程。未配置时不启动任何 MySQL 逻辑，OOBE、SQLite 建库、超级管理员创建与默认完全一致；配置并迁移、重启后站点照常运行，只是数据落点换成了 MySQL。
 
----
+## 本地开发：怎么拉 / 怎么改 / 怎么跑
 
-## 配置文件
-
-- 路径：`data/mysql-plugin.json`（站点数据目录下；不依赖基础设施 SQLite，保证预启动阶段可读）。
-- 由后台「保存并迁移」成功时写入，字段：
-
-| 字段 | 说明 |
-| --- | --- |
-| `host` | MySQL 主机地址 |
-| `port` | 端口（默认 3306） |
-| `user` | 用户名 |
-| `password` | 密码（明文保存在服务器端，请勿把 data 目录纳入版本控制） |
-| `database` | 目标数据库名，只允许字母、数字、下划线 |
-
-- 后台「测试连接」只验证连通性，**不写入**配置文件；「断开」删除该文件并回退 SQLite。
-
----
-
-## 迁移
-
-入口：后台 `/admin/plugins/mysql-plugin` → 填写连接信息 →「测试连接」→「保存并迁移」→ 重启站点。
-
-迁移语义：
-
-- 以 **SQLite 为数据源**，将 `groups / users / posts / comments / sessions` 五张表全量复制到目标 MySQL（先**清空/覆盖**目标表中已有内容，再逐行写入；整个过程在同一事务内，失败自动回滚，不会留下半截数据）。
-- 目标数据库若不存在会被自动创建（`utf8mb4`）。
-- **SQLite 保留作为基础设施**（插件启停状态、回退依据），迁移后**不会从 MySQL 反向同步回 SQLite**。
-- 迁移成功后提示重启：MySQL 相关服务在启动阶段（preboot / bootstrap）接管，重启后正式生效。
-
-> 提示：迁移会覆盖目标库已有数据，执行前请确认目标 MySQL 实例与数据库可覆盖（必要时先备份）。
-
----
-
-## 回退
-
-1. 后台 `/admin/plugins/mysql-plugin` →「断开」（清除配置；或直接删除 `data/mysql-plugin.json`）。
-2. 重启站点：未配置时插件退出接管，恢复使用 SQLite，原有数据原样保留。
-
----
-
-## 故障恢复
-
-- **迁移失败**：迁移在事务中执行，失败自动回滚，目标 MySQL 表保持迁移前的状态。
-- **MySQL 不可用导致站点异常**：删除 `data/mysql-plugin.json` 后重启站点即可恢复 SQLite 运行；SQLite 数据库从未被破坏，数据完整。
-- **连接反复失败**：先在后台「测试连接」确认主机 / 端口 / 账号 / 数据库名；数据库名非法（含字母、数字、下划线以外的字符）时迁移会被拒绝。
-- **插件停用/卸载**：停用需重启后完整生效；卸载会清理配置与插件目录，站点回到 SQLite。
-
----
-
-## 目录
-
+```bash
+git clone <本仓库地址> LinearPress/Plugins/mysql-plugin
+cd LinearPress/base
+npm install && npm run db:init
+sh scripts/sync-plugins.sh mysql-plugin
+npm run dev
 ```
+
+## 目录结构
+
+```text
 mysql-plugin/
-├── plugin.json          # 插件清单（id=mysql-plugin, preboot=true, views=views）
-├── index.ts             # 生命周期 + 后台设置路由与三个操作接口
+├── plugin.json            # Manifest（type: driver, preboot: true）
+├── index.ts               # 入口：preboot/bootstrap/activate 分阶段接管
 ├── src/
-│   ├── config.ts        # data/mysql-plugin.json 配置读写与校验
-│   ├── mysql.ts         # 连接池 / 建库建表 / SQLite→MySQL 迁移 / 连接测试
-│   └── services.ts      # MySQL 版业务服务与 Session Store
-├── views/
-│   └── mysql-plugin/
-│       └── settings.ejs # 后台设置页（复用 admin 布局与 admin.css）
-└── README.md
+│   ├── config.ts          # 连接配置模型 + 读写 data/mysql-plugin.json
+│   ├── mysql.ts           # 连接池与基础查询适配
+│   └── services.ts        # 业务服务（posts/users/comments/…）MySQL 实现
+└── views/mysql-plugin/    # 后台设置页（连接/测试/迁移）
 ```
+
+## 注意事项
+
+- 迁移由后台流程执行：先备份语义（保留现有数据），再逐表灌入 MySQL；重启生效。
+- 若后续把连接池改为 Cordis Effect，必须保证 Fiber 销毁时先释放连接再卸载数据库服务。
+
+## 贡献与发布
+
+- conventional commits；提交前 `cd base && npm run typecheck`
+- 版本：`git tag v1.0.0 && git push --tags`
+- License：MIT（见仓库 LICENSE）
