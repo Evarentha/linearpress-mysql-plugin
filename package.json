@@ -1,10 +1,35 @@
 {
-  "name": "linearpress-mysql-plugin",
-  "version": "1.0.0",
-  "private": true,
+  "name": "@evarentha/linearpress-mysql-plugin",
+  "version": "3.0.0",
+  "license": "GPL-3.0-or-later",
   "type": "module",
-  "description": "LinearPress MySQL 驱动插件：连接 MySQL 并将 SQLite 数据迁移到 MySQL。",
+  "description": "将 MySQL 作为主数据库：后台配置连接、从 SQLite 迁移数据，重启后 MySQL 替代默认 SQLite。",
   "dependencies": {
     "mysql2": "^3.11.5"
+  },
+  "main": "index.ts",
+  "author": "MoyuZJ <moyuzj@moyuzj.cn> (https://moyuzj.cn)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Evarentha/linearpress-mysql-plugin.git"
+  },
+  "keywords": [
+    "linearpress",
+    "plugin",
+    "evarentha",
+    "mysql-plugin"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "peerDependencies": {
+    "linearpress": "^3.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "homepage": "https://github.com/Evarentha/linearpress-mysql-plugin#readme",
+  "bugs": {
+    "url": "https://github.com/Evarentha/linearpress-mysql-plugin/issues"
   }
 }
