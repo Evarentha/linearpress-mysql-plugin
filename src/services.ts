@@ -1,28 +1,39 @@
 /*
- * Author: MoyuZJ
- * Team: LinearTeam
- * Contact: linearteam@foxmail.com
- * Made by MoyuZJ in China with ♥
+ * MySQL Business Service Implementations
+ *
+ * MySQL-backed implementations of every LinearPress service contract.
+ *
+ * Authors:
+ * MoyuZJ <moyuzj@moyuzj.cn> @LinearTeam - Made in China with ♥
+ *
+ * Copyright (C) 2026 Evarentha
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 /**
  * LinearPress MySQL driver — service layer.
  *
- * 与 base/src/core/core-services.ts 的服务契约完全对应，但所有数据访问
- * 都基于 mysql2/promise 连接池（`?` 占位符），不绑定任何 SQLite 查询。
+ * <p>Matches the service contracts of base/src/core/core-services.ts exactly, but every data
+ * access goes through a mysql2/promise pool (`?` placeholders) with no SQLite queries
+ * anywhere.</p>
  *
- * 导出的工厂：
- *   createDatabaseService(pool)        -> 与 DatabaseService 同构（raw 为连接池）
- *   createAuthService(pool, hooks)     -> AuthService
- *   createUserService(pool, hooks)     -> UserService
- *   createPostService(pool, hooks)     -> PostService（generateSlug / render 纯函数）
- *   createCommentService(pool, hooks)  -> CommentService
- *   createGroupService(pool, hooks)    -> GroupService
- *   createPermissionService(pool)      -> PermissionService
- *   createSessionStore(pool)           -> 兼容 express-session Store 的会话存储
+ * Exported factories:
+ * <ul>
+ * <li>createDatabaseService(pool) — isomorphic to DatabaseService (raw is the pool)</li>
+ * <li>createAuthService(pool, hooks) — AuthService</li>
+ * <li>createUserService(pool, hooks) — UserService</li>
+ * <li>createPostService(pool, hooks) — PostService (generateSlug / render as pure functions)</li>
+ * <li>createCommentService(pool, hooks) — CommentService</li>
+ * <li>createGroupService(pool, hooks) — GroupService</li>
+ * <li>createPermissionService(pool) — PermissionService</li>
+ * <li>createSessionStore(pool) — session store compatible with express-session Store</li>
+ * </ul>
  *
- * JSON 列（content_json / permissions）读取时自动解析，写入时序列化。
- * 事务通过 AsyncLocalStorage 把回调内的所有查询绑定到同一连接。
+ * <p>JSON columns (content_json / permissions) are parsed on read and serialized on write.
+ * Transactions bind every query inside the callback to a single connection via
+ * AsyncLocalStorage.</p>
+ *
+ * @since 1.1.0
  */
 import bcrypt from 'bcryptjs';
 import session from 'express-session';

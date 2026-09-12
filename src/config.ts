@@ -1,8 +1,24 @@
 /*
- * Author: MoyuZJ
- * Team: LinearTeam
- * Contact: linearteam@foxmail.com
- * Made by MoyuZJ in China with ♥
+ * MySQL Connection Configuration Store
+ *
+ * Reads, writes, and validates the MySQL connection config persisted as JSON.
+ *
+ * Authors:
+ * MoyuZJ <moyuzj@moyuzj.cn> @LinearTeam - Made in China with ♥
+ *
+ * Copyright (C) 2026 Evarentha
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+/**
+ * Connection configuration for the MySQL plugin, persisted at data/mysql-plugin.json so it does
+ * not depend on the infrastructure SQLite that is not yet initialized during preboot.
+ *
+ * <p>Database names are restricted to letters, digits, and underscores so they can be safely
+ * interpolated into backquoted identifiers; the config file is chmod 0o600 because it holds
+ * the database password in plain text.</p>
+ *
+ * @since 1.1.0
  */
 
 import fs from 'fs-extra';

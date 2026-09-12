@@ -1,22 +1,34 @@
 /*
- * Author: MoyuZJ
- * Team: LinearTeam
- * Contact: linearteam@foxmail.com
- * Made by MoyuZJ in China with ♥
+ * MySQL Driver Plugin Entry Point
+ *
+ * Cordis plugin that swaps LinearPress's SQLite services for MySQL-backed implementations.
+ *
+ * Authors:
+ * MoyuZJ <moyuzj@moyuzj.cn> @LinearTeam - Made in China with ♥
+ *
+ * Copyright (C) 2026 Evarentha
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 /**
- * LinearPress MySQL 驱动插件入口。
+ * Entry point of the LinearPress MySQL driver plugin.
  *
- * 部署位置固定为 base/src/plugins/mysql-plugin/index.ts，因此对 base 的引用
- * 一律使用 '../../core/...' / '../../types/...'（不要 '../../../../src/...'）。
+ * <p>The deployment location is fixed at base/src/plugins/mysql-plugin/index.ts, so references
+ * to base always use '../../core/...' / '../../types/...' (never '../../../../src/...').</p>
  *
- * 生命周期（Cordis 原生 phase）：
- *  - preboot   未配置时不干预 OOBE/SQLite；配置存在时先建表（失败直接中止启动，
- *              避免静默退回 SQLite 造成数据分叉），再替换 sessionStoreFactory。
- *  - bootstrap 替换 databaseService / auth / users / posts / comments / groups / permissions。
- *  - activate  注册设置页 /自动迁移 / 测试连接 / 清除配置路由与后台菜单。
- *  - Effect    关闭本进程持有的连接池。
+ * Lifecycle (Cordis native phases):
+ * <ul>
+ * <li>preboot — when unconfigured, leave OOBE/SQLite untouched; when a config exists, first
+ * ensure the schema (a failure aborts startup outright, avoiding a silent fallback to SQLite
+ * that would fork the data), then replace sessionStoreFactory.</li>
+ * <li>bootstrap — replace databaseService / auth / users / posts / comments / groups /
+ * permissions.</li>
+ * <li>activate — register the settings page / auto-migration / test-connection / clear-config
+ * routes and the admin menu entry.</li>
+ * <li>Effect — close the connection pool held by this process.</li>
+ * </ul>
+ *
+ * @since 1.1.0
  */
 import type { Context } from 'cordis';
 import type { RequestHandler } from 'express';

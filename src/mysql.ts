@@ -1,8 +1,27 @@
 /*
- * Author: MoyuZJ
- * Team: LinearTeam
- * Contact: linearteam@foxmail.com
- * Made by MoyuZJ in China with ♥
+ * MySQL Pool, Schema, and Migration Engine
+ *
+ * Creates MySQL pools, ensures the schema, and migrates all data from SQLite.
+ *
+ * Authors:
+ * MoyuZJ <moyuzj@moyuzj.cn> @LinearTeam - Made in China with ♥
+ *
+ * Copyright (C) 2026 Evarentha
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+/**
+ * MySQL connection management for the plugin: pool creation (multipleStatements enabled for
+ * batch DDL during migration), schema creation in the MySQL dialect mirroring the SQLite
+ * structure of database.ts, full SQLite -> MySQL migration, and connection testing.
+ *
+ * <p>The migration copies groups -> users -> posts -> comments -> sessions from the
+ * infrastructure SQLite singleton (the plugin is still in its SQLite phase at that point)
+ * into the target database inside one transaction, clearing the target first because SQLite
+ * is authoritative. Temporary "no database" pools are always closed in finally blocks to
+ * avoid handle leaks.</p>
+ *
+ * @since 1.1.0
  */
 
 import mysql from 'mysql2/promise';

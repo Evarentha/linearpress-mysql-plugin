@@ -1,8 +1,20 @@
 <!--
-  Author: MoyuZJ
-  Team: LinearTeam
-  Contact: linearteam@foxmail.com
-  Made by MoyuZJ in China with ♥
+  MySQL Plugin Settings View
+  Admin form for the MySQL connection, migration, and disconnect actions.
+
+  Authors:
+  MoyuZJ <moyuzj@moyuzj.cn> @LinearTeam - Made in China with ♥
+
+  Copyright (C) 2026 Evarentha
+  SPDX-License-Identifier: GPL-3.0-or-later
+-->
+
+<!--
+  Admin settings page for the MySQL plugin: connection form (host / port /
+  user / password / database) with test-connection, save-and-migrate, and
+  disconnect actions, plus the full-overwrite migration warning.
+
+  @since 1.1.0
 -->
 
 <div class="page-head"><h1>MySQL 插件</h1><p class="eyebrow">连接 MySQL 并迁移 SQLite 数据</p></div>
@@ -19,7 +31,7 @@
     <label class="editor-field">数据库名<input type="text" id="mysql-database" name="database" value="<%= database %>" placeholder="linearpress" required></label>
     <div style="display:flex;gap:12px;flex-wrap:wrap">
       <button type="button" class="button" id="mysql-test">测试连接</button>
-      <button type="submit" class="button">保存并迁移数据</button>
+      <button type="submit" class="button" id="mysql-migrate">保存并迁移数据</button>
       <% if (configured) { %><button type="button" class="button" id="mysql-disconnect" style="background:#c62828">断开（返回 SQLite）</button><% } %>
     </div>
   </form>
@@ -42,20 +54,19 @@
       database: document.getElementById('mysql-database').value.trim()
     };
   }
-  function post(url) {
-    var btn = document.activeElement;
+  function post(url, btn) {
     if (btn) btn.disabled = true;
     return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body()) })
       .then((r) => { return r.json().catch(() => { return { ok: false, message: '服务器返回异常' }; }); })
       .finally(() => { if (btn) btn.disabled = false; });
   }
   document.getElementById('mysql-test').addEventListener('click', () => {
-    post('/admin/plugins/mysql-plugin/test').then((data) => { show(data.message || '完成', Boolean(data.ok)); });
+    post('/admin/plugins/mysql-plugin/test', document.getElementById('mysql-test')).then((data) => { show(data.message || '完成', Boolean(data.ok)); });
   });
   document.getElementById('mysql-form').addEventListener('submit', (event) => {
     event.preventDefault();
     if (!confirm('迁移将以 SQLite 数据全量覆盖目标 MySQL 表，且不会反向同步。确定继续？')) return;
-    post('/admin/plugins/mysql-plugin/migrate').then((data) => {
+    post('/admin/plugins/mysql-plugin/migrate', document.getElementById('mysql-migrate')).then((data) => {
       show(data.message || '完成', Boolean(data.ok));
       if (data.ok) setTimeout(() => { location.reload(); }, 1500);
     });
