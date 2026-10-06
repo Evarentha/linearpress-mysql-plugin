@@ -1,3 +1,8 @@
+# Local documentation (kept on disk, not committed)
+doc/
+docs/
+/MIGRATION.md
+
 node_modules/
 .logs/
 *.log
