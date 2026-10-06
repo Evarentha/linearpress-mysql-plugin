@@ -5,6 +5,7 @@
  *
  * Authors:
  * MoyuZJ <moyuzj@moyuzj.cn> @LinearTeam - Made in China with ♥
+ * worryzu <worryzu@gmail.com> @LinearTeam
  *
  * Copyright (C) 2026 Evarentha
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -35,6 +36,7 @@ import type { RequestHandler } from 'express';
 import type { DatabaseService } from '../../types/services.js';
 // 基础设施 SQLite（plugins 启停状态表）——仅用于读取 enabled 标志，业务数据仍走 MySQL。
 import { db as infraDb } from '../../core/database.js';
+import { maintenance } from '../../core/maintenance.js';
 import { replaceService } from '../../core/context.js';
 import type { HookSystem } from '../../core/hook-system.js';
 import type { Pool } from 'mysql2/promise';
@@ -59,6 +61,7 @@ const messageOf = (error: unknown): string => error instanceof Error ? error.mes
 
 /** 本进程持有的连接池；只由 preboot/bootstrap 创建，Effect 关闭。 */
 let activePool: Pool | undefined;
+let migrationRunning = false;
 
 /** 配置存在且插件未被明确停用时才接管；首次启动尚无 plugins 表时按配置启用。 */
 function isPluginEnabled(): boolean {
@@ -84,7 +87,7 @@ export const preboot = async (context: Context): Promise<void> => {
   const pool = createPool(config);
   // 先确保 MySQL 表结构就绪，再切换会话存储。DDL 失败会向上抛出让启动失败，
   // 绝不静默退回 SQLite 阶段继续运行（否则会话/数据会分叉）。
-  await ensureSchema(pool);
+  try { await ensureSchema(pool); } catch (error) { await pool.end(); throw error; }
   activePool = pool;
   replaceService(context, 'sessionStoreFactory', () => createSessionStore(pool));
   context.effect(() => () => {
@@ -184,12 +187,18 @@ export const activate = (context: Context): void => {
     if (!config.host || !config.user || !config.database) {
       return res.status(400).json({ ok: false, message: '请填写主机、用户名和目标数据库名' });
     }
+    if (migrationRunning) return res.status(409).json({ ok: false, message: '迁移正在执行' });
+    migrationRunning = true;
+    let enteredMaintenance = false;
     try {
+      // No SQLite snapshot is authoritative after this process has switched to MySQL.
+      if (activePool || isPluginEnabled()) throw new Error('MySQL 已配置或正在使用；禁止再次从 SQLite 迁移');
       // 数据库名进入反引号插值（CREATE DATABASE）前统一校验。
       assertValidDatabaseName(config.database);
+      maintenance.enter('manual');
+      enteredMaintenance = true;
       const pool = await ensureDatabase(config);
       try {
-        await ensureSchema(pool);
         await migrateFromSqlite(pool);
         writeConfig({ ...config, migratedAt: new Date().toISOString() });
         res.json({ ok: true, message: '数据已迁移到 MySQL，重启站点后生效（MySQL 将替代 SQLite）。' });
@@ -199,6 +208,9 @@ export const activate = (context: Context): void => {
       }
     } catch (error) {
       res.status(400).json({ ok: false, message: `迁移失败：${messageOf(error)}` });
+    } finally {
+      migrationRunning = false;
+      if (enteredMaintenance) maintenance.exit();
     }
   });
 

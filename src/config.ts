@@ -5,6 +5,7 @@
  *
  * Authors:
  * MoyuZJ <moyuzj@moyuzj.cn> @LinearTeam - Made in China with ♥
+ * worryzu <worryzu@gmail.com> @LinearTeam
  *
  * Copyright (C) 2026 Evarentha
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -60,9 +61,13 @@ export function readConfig(): MysqlConfig | undefined {
 export function writeConfig(config: MysqlConfig): void {
   assertValidDatabaseName(config.database);
   fs.ensureDirSync(path.dirname(CONFIG_PATH));
-  fs.writeJsonSync(CONFIG_PATH, config, { spaces: 2 });
-  // 配置含数据库明文密码，仅允许属主读写，防止备份/共享时泄露。
-  fs.chmodSync(CONFIG_PATH, 0o600);
+  // Atomic publish: failed writes must not leave an enabled, half-written configuration.
+  const temporary = `${CONFIG_PATH}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(temporary, JSON.stringify(config, null, 2), { mode: 0o600 });
+    fs.chmodSync(temporary, 0o600);
+    fs.renameSync(temporary, CONFIG_PATH);
+  } finally { fs.removeSync(temporary); }
 }
 
 export function clearConfig(): void {

@@ -5,6 +5,7 @@
  *
  * Authors:
  * MoyuZJ <moyuzj@moyuzj.cn> @LinearTeam - Made in China with ♥
+ * worryzu <worryzu@gmail.com> @LinearTeam
  *
  * Copyright (C) 2026 Evarentha
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -36,6 +37,7 @@
  * @since 1.1.0
  */
 import bcrypt from 'bcryptjs';
+import { compatibleQuery, splitSql } from './sql-compat.js';
 import session from 'express-session';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Pool, PoolConnection, ResultSetHeader } from 'mysql2/promise';
@@ -96,39 +98,68 @@ function toError(error: unknown): Error {
 /* ------------------------------------------------------------------ */
 
 /** 事务上下文：transaction() 内所有查询自动切换到专用连接。 */
-const transactionContext = new AsyncLocalStorage<PoolConnection>();
-
+interface TransactionBinding { connection: PoolConnection; active: boolean; }
+const transactionContext = new AsyncLocalStorage<Map<Pool, TransactionBinding>>();
+let savepointId = 0;
 function getQueryable(pool: Pool): Pool | PoolConnection {
-  return transactionContext.getStore() ?? pool;
+  const binding = transactionContext.getStore()?.get(pool);
+  if (binding && !binding.active) throw new Error('MySQL transaction has ended; detached work cannot access its database');
+  return binding?.connection ?? pool;
+}
+function execute(pool: Pool, sql: string, params: unknown[] = []): Promise<any> {
+  if (transactionContext.getStore()?.has(pool) && splitSql(sql).some((s) => /^\s*(CREATE|ALTER|DROP|TRUNCATE|RENAME)\b/i.test(s))) throw new Error('MySQL DDL cannot run inside a business transaction');
+  return compatibleQuery(getQueryable(pool), sql, params);
 }
 
-async function queryAllRows<T>(queryable: Pool | PoolConnection, sql: string, params: unknown[] = []): Promise<T[]> {
-  const [rows] = await queryable.query(sql, params) as unknown as [Array<AnyRow> | undefined, unknown];
+async function queryAllRows<T>(queryable: Pool, sql: string, params: unknown[] = []): Promise<T[]> {
+  const [rows] = await execute(queryable, sql, params) as unknown as [Array<AnyRow> | undefined, unknown];
   return (rows ?? []).map((row) => normalizeRow(row) as T);
 }
 
-async function queryRow<T>(queryable: Pool | PoolConnection, sql: string, params: unknown[] = []): Promise<T | undefined> {
+async function queryRow<T>(queryable: Pool, sql: string, params: unknown[] = []): Promise<T | undefined> {
   const rows = await queryAllRows<T>(queryable, sql, params);
   return rows[0];
 }
 
-async function queryRun(queryable: Pool | PoolConnection, sql: string, params: unknown[] = []): Promise<MySQLRunResult> {
-  const [result] = await queryable.query(sql, params) as unknown as [ResultSetHeader, unknown];
+async function queryRun(queryable: Pool, sql: string, params: unknown[] = []): Promise<MySQLRunResult> {
+  if (transactionContext.getStore()?.has(queryable) && /^\s*(CREATE|ALTER|DROP|TRUNCATE|RENAME)\b/i.test(sql)) throw new Error('MySQL DDL cannot run inside a business transaction');
+  const [result] = await execute(queryable, sql, params) as unknown as [ResultSetHeader, unknown];
   return { lastInsertRowid: Number(result.insertId), changes: Number(result.affectedRows) };
 }
 
 /** 在独立连接上开启事务；回调内（经 AsyncLocalStorage）的所有查询共享该连接。 */
 async function runTransaction<T>(pool: Pool, callback: () => T | Promise<T>): Promise<T> {
+  const current = transactionContext.getStore();
+  const existing = current?.get(pool);
+  if (existing && !existing.active) throw new Error('MySQL transaction has ended; detached work cannot open another transaction');
+  const nested = existing?.connection;
+  if (nested) {
+    const name = `lp_sp_${++savepointId}`;
+    await nested.query(`SAVEPOINT ${name}`);
+    try {
+      const result = await callback();
+      await nested.query(`RELEASE SAVEPOINT ${name}`);
+      return result;
+    } catch (error) {
+      await nested.query(`ROLLBACK TO SAVEPOINT ${name}`);
+      await nested.query(`RELEASE SAVEPOINT ${name}`);
+      throw error;
+    }
+  }
   const connection = await pool.getConnection();
+  const bindings = new Map(current);
+  const binding: TransactionBinding = { connection, active: true };
   try {
     await connection.beginTransaction();
-    const result = await transactionContext.run(connection, callback);
+    bindings.set(pool, binding);
+    const result = await transactionContext.run(bindings, callback);
     await connection.commit();
     return result;
   } catch (error) {
     await connection.rollback().catch(() => undefined);
     throw error;
   } finally {
+    binding.active = false; // Reject detached work; never silently autocommit after a rollback.
     connection.release();
   }
 }
@@ -276,7 +307,9 @@ async function assignUserGroup(pool: Pool, userId: number, groupId: number): Pro
 interface PostRow extends Omit<Post, 'content_json'> { content_json: unknown; }
 
 function hydratePost(row: PostRow | undefined): Post | undefined {
-  return row ? { ...row, content_json: parseJsonColumn<Block[]>(row.content_json) } : undefined;
+  if (!row) return undefined;
+  const content_json = parseJsonColumn<Block[]>(row.content_json);
+  return { ...row, content_json, html_cache: row.html_cache?.includes('LP-MODERN-BLOCK::') ? renderBlocks(content_json) : row.html_cache };
 }
 
 async function findPostById(pool: Pool, id: number): Promise<Post | undefined> {
@@ -296,7 +329,7 @@ async function listAllPosts(pool: Pool): Promise<Array<Post & { author_name: str
 }
 
 async function listPublishedPosts(pool: Pool, limit = 20, offset = 0): Promise<Post[]> {
-  const rows = await queryAllRows<PostRow>(pool, "SELECT * FROM posts WHERE status = 'published' ORDER BY created_at DESC LIMIT ? OFFSET ?", [limit, offset]);
+  const rows = await queryAllRows<PostRow>(pool, "SELECT * FROM posts WHERE status = 'published' ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?", [limit, offset]);
   return rows.map((row) => hydratePost(row)!);
 }
 
@@ -310,15 +343,21 @@ async function uniquePostSlug(pool: Pool, value: string, title: string, postId?:
   return candidate;
 }
 
-async function savePost(pool: Pool, input: { id?: number; title: string; slug: string; blocks: Block[]; status: PostStatus; authorId: number }): Promise<Post> {
+async function savePost(pool: Pool, input: { id?: number; title: string; slug: string; blocks: Block[]; status: PostStatus; authorId: number; postType?: 'post' | 'shuoshuo' }): Promise<Post> {
+  if (!Array.isArray(input.blocks) || input.blocks.some((block) => !block || typeof block !== 'object' || typeof block.type !== 'string')) throw new Error('正文必须是有效区块数组');
+  if (!['draft', 'published', 'archived'].includes(input.status)) throw new Error('文章状态无效');
+  const existing = input.id ? await findPostById(pool, input.id) : undefined;
+  if (input.id && !existing) throw new Error('文章不存在');
+  const isShuoshuo = existing?.slug.startsWith('reserved_shuoshuo_') || input.postType === 'shuoshuo';
   const title = input.title.trim();
-  if (!title) throw new Error('文章标题不能为空');
-  const slug = await uniquePostSlug(pool, input.slug, title, input.id);
+  if (!title && !isShuoshuo) throw new Error('文章标题不能为空');
+  if (isShuoshuo && !/^reserved_shuoshuo_[a-zA-Z0-9_-]+$/.test(existing?.slug ?? input.slug)) throw new Error('说说标识无效');
+  const slug = isShuoshuo ? existing?.slug ?? input.slug : await uniquePostSlug(pool, input.slug, title, input.id);
   const html = renderBlocks(input.blocks);
   const json = JSON.stringify(input.blocks);
   let id = input.id;
   if (id) {
-    await queryRun(pool, 'UPDATE posts SET title = ?, slug = ?, content_json = ?, html_cache = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [title, slug, json, html, input.status, id]);
+    await queryRun(pool, 'UPDATE posts SET title = ?, slug = ?, content_json = ?, html_cache = ?, status = ?, author_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [title, slug, json, html, input.status, input.authorId, id]);
   } else {
     const { lastInsertRowid } = await queryRun(pool, 'INSERT INTO posts(title,slug,content_json,html_cache,status,author_id) VALUES(?,?,?,?,?,?)', [title, slug, json, html, input.status, input.authorId]);
     id = lastInsertRowid;
@@ -429,6 +468,7 @@ async function deleteGroup(pool: Pool, id: number): Promise<void> {
 
 /** 与 base DatabaseService 契约同构，但 raw 为 mysql2 连接池（入口替换 ctx.databaseService 时需断言）。 */
 export interface MySQLDatabaseService {
+  readonly dialect: 'mysql';
   raw: Pool;
   all<T>(sql: string, ...params: unknown[]): Promise<T[]>;
   get<T>(sql: string, ...params: unknown[]): Promise<T | undefined>;
@@ -439,13 +479,20 @@ export interface MySQLDatabaseService {
 
 export function createDatabaseService(pool: Pool): MySQLDatabaseService {
   return {
-    raw: pool,
+    dialect: 'mysql',
+    raw: new Proxy(pool, { get(target, key) {
+      if (key === 'query' || key === 'execute') return (sql: string, params: unknown[] = []) => execute(pool, sql, params);
+      const value = Reflect.get(target, key);
+      return typeof value === 'function' ? value.bind(target) : value;
+    } }),
     all: <T>(sql: string, ...params: unknown[]) => queryAllRows<T>(pool, sql, params),
     get: <T>(sql: string, ...params: unknown[]) => queryRow<T>(pool, sql, params),
     run: (sql, ...params) => queryRun(pool, sql, params),
     exec: async (sql) => {
-      // 多语句 DDL 需要连接池开启 multipleStatements: true
-      await getQueryable(pool).query(sql);
+      for (const statement of splitSql(sql)) {
+        if (transactionContext.getStore()?.has(pool) && /^\s*(CREATE|ALTER|DROP|TRUNCATE|RENAME)\b/i.test(statement)) throw new Error('MySQL DDL cannot run inside a business transaction');
+        await execute(pool, statement);
+      }
     },
     transaction: <T>(callback: () => T | Promise<T>) => runTransaction(pool, callback)
   };
@@ -507,11 +554,12 @@ export function createPostService(pool: Pool, hooks: HookSystem): PostService {
         html_cache: existing?.html_cache ?? null,
         status: input.status,
         author_id: input.authorId,
+        ...(input.postType ? { postType: input.postType } : {}),
         views: existing?.views ?? 0,
         created_at: existing?.created_at ?? '',
         updated_at: existing?.updated_at ?? null
       });
-      const saved = await savePost(pool, { id: draft.id || undefined, title: draft.title, slug: draft.slug, blocks: draft.content_json, status: draft.status, authorId: draft.author_id });
+      const saved = await savePost(pool, { id: draft.id || undefined, title: draft.title, slug: draft.slug, blocks: draft.content_json, status: draft.status, authorId: draft.author_id, postType: input.postType });
       return hooks.trigger('post:afterSave', saved);
     },
     remove: async (id) => {
@@ -600,7 +648,7 @@ export class MySQLSessionStore extends session.Store {
   constructor(private pool: Pool) { super(); }
 
   get(sid: string, callback: SessionCallback): void {
-    this.pool.query('SELECT sess, expired FROM sessions WHERE sid = ?', [sid])
+    getQueryable(this.pool).query('SELECT sess, expired FROM sessions WHERE sid = ?', [sid])
       .then(([rows]) => {
         const row = (rows as Array<{ sess: string; expired: number }>)[0];
         if (!row || row.expired <= Date.now()) return callback(null, null);
@@ -611,14 +659,14 @@ export class MySQLSessionStore extends session.Store {
 
   set(sid: string, sess: session.SessionData, callback: VoidCallback): void {
     const expires = sess.cookie?.expires ? new Date(sess.cookie.expires).getTime() : Date.now() + 86_400_000;
-    this.pool.query(
+    getQueryable(this.pool).query(
       'INSERT INTO sessions(sid,sess,expired) VALUES(?,?,?) ON DUPLICATE KEY UPDATE sess = VALUES(sess), expired = VALUES(expired)',
       [sid, JSON.stringify(sess), expires]
     ).then(() => callback(null)).catch((error: unknown) => callback(toError(error)));
   }
 
   destroy(sid: string, callback: VoidCallback): void {
-    this.pool.query('DELETE FROM sessions WHERE sid = ?', [sid])
+    getQueryable(this.pool).query('DELETE FROM sessions WHERE sid = ?', [sid])
       .then(() => callback(null))
       .catch((error: unknown) => callback(toError(error)));
   }
